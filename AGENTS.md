@@ -34,3 +34,29 @@ This file contains instructions for AI coding agents working on the DevEstacion/
 - Title format: `type(scope): description` (e.g., `feat(cursor): add identity backfill`)
 - Atomic commits: 3+ files changed MUST be split into multiple logical commits. Never group unrelated changes.
 - Ensure `npm run build` succeeds before pushing.
+
+## Approved Models
+
+Agents must use the following models only when routing requests. These represent the "best" variants per provider, stripped of lower tiers and legacy models.
+
+### Codex (cx/)
+- gpt-5.5 (all reasoning levels: low, medium, high, xhigh)
+- gpt-5.4 (all reasoning levels: low, medium, high, xhigh)
+
+### Cursor (cu/)
+- composer-2.5
+- claude-opus-4-8 (high, thinking-high, high-fast, thinking-high-fast, xhigh, thinking-xhigh, xhigh-fast, thinking-xhigh-fast)
+- claude-opus-4-7 (high, thinking-high, high-fast, thinking-high-fast, xhigh, thinking-xhigh, xhigh-fast, thinking-xhigh-fast)
+- claude-opus-4-6 (high, thinking-high, high-fast, thinking-high-fast, max, thinking-max, max-fast, thinking-max-fast)
+
+### Gemini CLI (gc/)
+- gemini-3.1-pro-preview
+- gemini-3.1-flash-preview
+- gemini-3.1-flash-lite
+- gemini-3-flash-preview
+- gemini-2.5-pro
+- gemini-2.5-flash
+
+### xAI / Grok (xai/)
+- grok-build
+- grok-composer-2.5-fast
