@@ -5,10 +5,6 @@
 import { CLIENT_METADATA, getPlatformUserAgent } from "../config/appConstants.js";
 import { proxyAwareFetch } from "../utils/proxyFetch.js";
 import { buildCursorHeaders } from "../utils/cursorChecksum.js";
-import path from "path";
-import os from "os";
-import fs from "fs";
-import Database from "better-sqlite3";
 
 // GitHub API config
 const GITHUB_CONFIG = {
@@ -105,8 +101,6 @@ export async function getUsageForProvider(connection, proxyOptions = null) {
       return await getMiniMaxUsage(apiKey, provider, proxyOptions);
     case "cursor":
       return await getCursorUsage(accessToken, providerSpecificData, proxyOptions);
-    case "xai":
-      return await getXaiUsage(connection);
     default:
       return { message: `Usage API not implemented for ${provider}` };
   }
@@ -1471,106 +1465,5 @@ async function getQoderUsage(accessToken, proxyOptions = null) {
     };
   } catch (error) {
     return { message: `Qoder connected. Unable to fetch usage: ${error.message}` };
-  }
-}
-
-/**
- * Get xAI (Grok) usage.
- *
- * xAI does not publish a public per-account quota/usage endpoint (the
- * billing console at console.x.ai is the only source for hard limits, and
- * it requires a session cookie, not an API key).  We therefore surface
- * local aggregates from 9router's own `usageHistory` table, grouped by
- * model, so the dashboard can show real spend and token usage for any
- * xAI connection.
- */
-async function getXaiUsage(connection) {
-  const dataDir = process.env.DATA_DIR || path.join(os.homedir(), ".9router");
-  const dbPath = path.join(dataDir, "db", "data.sqlite");
-
-  if (!fs.existsSync(dbPath)) {
-    return { message: "xAI usage unavailable: 9router DB not found" };
-  }
-
-  let db;
-  try {
-    db = new Database(dbPath, { readonly: true, fileMustExist: true });
-  } catch (error) {
-    return { message: `xAI usage unavailable: ${error.message}` };
-  }
-
-  try {
-    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    const rows = db
-      .prepare(
-        `SELECT
-            model,
-            SUM(promptTokens)     AS promptTokens,
-            SUM(completionTokens) AS completionTokens,
-            SUM(cost)             AS cost,
-            COUNT(*)              AS requests
-         FROM usageHistory
-         WHERE provider = 'xai'
-           AND (connectionId = @cid OR @cid = '')
-           AND timestamp >= @since
-         GROUP BY model
-         ORDER BY (COALESCE(promptTokens,0) + COALESCE(completionTokens,0)) DESC`,
-      )
-      .all({ cid: connection?.id || "", since });
-
-    if (!rows.length) {
-      return {
-        message: "xAI connected. No requests recorded in the last 30 days.",
-        quotas: {},
-        displayMessage: "xAI connected. No usage yet.",
-      };
-    }
-
-    const totals = rows.reduce(
-      (acc, r) => {
-        acc.prompt += Number(r.promptTokens) || 0;
-        acc.completion += Number(r.completionTokens) || 0;
-        acc.cost += Number(r.cost) || 0;
-        acc.requests += Number(r.requests) || 0;
-        return acc;
-      },
-      { prompt: 0, completion: 0, cost: 0, requests: 0 },
-    );
-
-    const quotas = {
-      "Total spend (30d)": {
-        used: Number(totals.cost.toFixed(4)),
-        total: 0,
-        unit: "usd",
-        resetAt: null,
-        unlimited: false,
-      },
-      "Total tokens (30d)": {
-        used: totals.prompt + totals.completion,
-        total: 0,
-        resetAt: null,
-        unlimited: false,
-      },
-    };
-
-    for (const r of rows) {
-      quotas[`${r.model} (30d)`] = {
-        used: (Number(r.promptTokens) || 0) + (Number(r.completionTokens) || 0),
-        total: 0,
-        unit: "tokens",
-        resetAt: null,
-        unlimited: false,
-      };
-    }
-
-    return {
-      plan: "xAI / Grok Build",
-      displayMessage: `xAI connected. ${totals.requests} requests in the last 30 days.`,
-      quotas,
-    };
-  } catch (error) {
-    return { message: `xAI usage fetch failed: ${error.message}` };
-  } finally {
-    if (db) db.close();
   }
 }
