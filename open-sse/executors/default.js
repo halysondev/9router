@@ -15,15 +15,6 @@ export class DefaultExecutor extends BaseExecutor {
     const transformed = this.applyJsonSchemaFallback(body);
     let out = injectReasoningContent({ provider: this.provider, model, body: transformed });
 
-    // xAI Grok Composer models (and some fast variants) do not support the reasoning_effort parameter.
-    // Clients often send it anyway → strip it for these models to avoid 400 from api.x.ai.
-    if (this.provider === 'xai') {
-      const noReasoning = model.includes('composer') || model.includes('fast');
-      if (noReasoning && out.reasoning_effort !== undefined) {
-        delete out.reasoning_effort;
-      }
-    }
-
     return out;
   }
 
