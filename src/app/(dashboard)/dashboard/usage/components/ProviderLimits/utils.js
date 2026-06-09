@@ -45,9 +45,9 @@ export function formatResetTime(date) {
  * @returns {string} Color name: "green" | "yellow" | "red"
  */
 export function getStatusColor(percentage) {
+  if (percentage === 0) return "red";
   if (percentage > 70) return "green";
-  if (percentage >= 30) return "yellow";
-  return "red"; // 0-29% including 0% (out of quota) - show red
+  return "yellow";
 }
 
 /**
@@ -56,9 +56,40 @@ export function getStatusColor(percentage) {
  * @returns {string} Emoji: "🟢" | "🟡" | "🔴"
  */
 export function getStatusEmoji(percentage) {
+  if (percentage === 0) return "🔴";
   if (percentage > 70) return "🟢";
-  if (percentage >= 30) return "🟡";
-  return "🔴"; // 0-29% including 0% (out of quota) - show red
+  return "🟡";
+}
+
+/**
+ * Tailwind color classes for quota remaining percentage.
+ * Red only when fully depleted (0%); low-but-nonzero balance stays yellow.
+ */
+export function getQuotaColorClasses(remainingPercentage) {
+  if (remainingPercentage === 0) {
+    return {
+      text: "text-red-600 dark:text-red-400",
+      bg: "bg-red-500",
+      bgLight: "bg-red-500/10",
+      emoji: "🔴",
+    };
+  }
+
+  if (remainingPercentage > 70) {
+    return {
+      text: "text-green-600 dark:text-green-400",
+      bg: "bg-green-500",
+      bgLight: "bg-green-500/10",
+      emoji: "🟢",
+    };
+  }
+
+  return {
+    text: "text-yellow-600 dark:text-yellow-400",
+    bg: "bg-yellow-500",
+    bgLight: "bg-yellow-500/10",
+    emoji: "🟡",
+  };
 }
 
 /**
@@ -142,6 +173,22 @@ export function parseQuotaData(provider, data) {
               total: quota.total || 0,
               remaining: quota.remaining,
               resetAt: quota.resetAt || null,
+            });
+          });
+        }
+        break;
+
+      case "cursor":
+        if (data.quotas) {
+          Object.entries(data.quotas).forEach(([quotaType, quota]) => {
+            if (!quota || (Number(quota.total) || 0) <= 0) return;
+            normalizedQuotas.push({
+              name: quotaType,
+              used: quota.used || 0,
+              total: quota.total || 0,
+              remaining: quota.remaining,
+              resetAt: quota.resetAt || null,
+              unit: quota.unit || null,
             });
           });
         }

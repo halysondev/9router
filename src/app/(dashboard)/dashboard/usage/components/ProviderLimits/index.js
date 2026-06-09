@@ -7,14 +7,23 @@ import Toggle from "@/shared/components/Toggle";
 import { parseQuotaData, calculatePercentage } from "./utils";
 import Card from "@/shared/components/Card";
 import { EditConnectionModal } from "@/shared/components";
-import { USAGE_SUPPORTED_PROVIDERS } from "@/shared/constants/providers";
+import { USAGE_SUPPORTED_PROVIDERS, AI_PROVIDERS } from "@/shared/constants/providers";
 
 function getConnectionLabel(connection) {
   const isEmail = (value) =>
     typeof value === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-  if (isEmail(connection.email)) return connection.email;
-  if (isEmail(connection.name)) return connection.name;
-  return connection.name;
+  const isAuth0Subject = (value) =>
+    typeof value === "string" && /^auth0\|user_/i.test(value);
+
+  const cachedEmail = connection.providerSpecificData?.cachedEmail;
+  if (isEmail(cachedEmail)) return cachedEmail;
+  if (isEmail(connection.email) && !isAuth0Subject(connection.email)) return connection.email;
+  if (isEmail(connection.name) && !isAuth0Subject(connection.name)) return connection.name;
+  if (isEmail(connection.displayName)) return connection.displayName;
+  if (connection.displayName && !isAuth0Subject(connection.displayName)) {
+    return connection.displayName;
+  }
+  return null;
 }
 
 function getConnectionQuotaRemaining(connection, quotaData) {
@@ -975,6 +984,7 @@ export default function ProviderLimits() {
           // Use table layout for all providers
           const isInactive = conn.isActive === false;
           const rowBusy = deletingId === conn.id || togglingId === conn.id;
+          const providerColor = AI_PROVIDERS[conn.provider]?.color || "#6B7280";
 
           return (
             <Card
@@ -985,15 +995,19 @@ export default function ProviderLimits() {
               <div className="px-3 py-2 border-b border-black/10 dark:border-white/10">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
-                    <div className="w-8 h-8 shrink-0 rounded-md flex items-center justify-center overflow-hidden">
+                    <div
+                      className="w-8 h-8 shrink-0 rounded-md flex items-center justify-center overflow-hidden p-0.5"
+                      style={{ backgroundColor: `${providerColor}15` }}
+                    >
                       <ProviderIcon
                         src={`/providers/${conn.provider}.png`}
                         alt={conn.provider}
-                        size={32}
-                        className="object-contain"
+                        size={28}
+                        className="object-contain rounded-sm"
                         fallbackText={
                           conn.provider?.slice(0, 2).toUpperCase() || "PR"
                         }
+                        fallbackColor={providerColor}
                       />
                     </div>
                     <div className="min-w-0">

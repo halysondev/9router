@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { formatResetTime, getRemainingPercentage } from "./utils";
+import { formatResetTime, getQuotaColorClasses, getRemainingPercentage } from "./utils";
 
 const PAGE_SIZE = 10;
 
@@ -37,36 +37,6 @@ function formatResetTimeDisplay(resetTime) {
   } catch {
     return null;
   }
-}
-
-/**
- * Get color classes based on remaining percentage
- */
-function getColorClasses(remainingPercentage) {
-  if (remainingPercentage > 70) {
-    return {
-      text: "text-green-600 dark:text-green-400",
-      bg: "bg-green-500",
-      bgLight: "bg-green-500/10",
-      emoji: "🟢",
-    };
-  }
-
-  if (remainingPercentage >= 30) {
-    return {
-      text: "text-yellow-600 dark:text-yellow-400",
-      bg: "bg-yellow-500",
-      bgLight: "bg-yellow-500/10",
-      emoji: "🟡",
-    };
-  }
-
-  return {
-    text: "text-red-600 dark:text-red-400",
-    bg: "bg-red-500",
-    bgLight: "bg-red-500/10",
-    emoji: "🔴",
-  };
 }
 
 function sortQuotas(quotas, sortMode) {
@@ -150,7 +120,7 @@ export default function QuotaTable({
         <table className="w-full table-fixed text-left">
           <tbody>
             {currentPageRows.map((quota) => {
-              const colors = getColorClasses(quota.remaining);
+              const colors = getQuotaColorClasses(quota.remaining);
               const countdown = formatResetTime(quota.resetAt);
               const resetDisplay = formatResetTimeDisplay(quota.resetAt);
 
