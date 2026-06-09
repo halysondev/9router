@@ -75,7 +75,7 @@ Some upstream models reject parameters that clients (Claude Code, OpenCode, etc.
 
 ### xAI / Grok
 - `grok-build` accepts standard OpenAI `reasoning_effort`.
-- `grok-composer-2.5-fast` (and any `*composer*` / `*fast*` xAI model) **does not** support `reasoning_effort`. `DefaultExecutor` in `open-sse/executors/default.js` strips it when `provider === 'xai'` and the model id contains `composer` or `fast` (fixes `[400] … does not support parameter r…` even when clients still send `reasoning_effort`).
+- `grok-composer-2.5-fast` (and any `*composer*` / `*fast*` xAI model) **does not** support `reasoning_effort`. Dedicated `XaiExecutor` (open-sse/executors/xai.js) handles suffix parsing (`grok-4-high` → effort=high) and strips the param for denied models. `grok-4.3` accepts `reasoning_effort` (per official docs).
 - Tool calling works on `grok-composer-2.5-fast` (verified: returns a `function` tool_call for a `calculator` tool, and a `bash` tool for the OpenCode `bash` agent).
 - `grok-composer-2.5-fast` is the recommended agent model (tool calling + fast). `grok-build` is the recommended chat model.
 
