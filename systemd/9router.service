@@ -1,0 +1,19 @@
+[Unit]
+Description=9Router AI proxy gateway
+Documentation=https://github.com/decolua/9router
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=PORT=20128
+Environment=DATA_DIR=%h/.9router
+Environment=NEXT_PUBLIC_BASE_URL=http://127.0.0.1:20128
+Environment=PATH=%h/.nvm/versions/node/v25.6.0/bin:/home/ron/.local/bin:/home/linuxbrew/.linuxbrew/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=%h/.nvm/versions/node/v25.6.0/bin/node /home/ron/Documents/Projects/9router/cli/cli.js --no-browser --skip-update --host 127.0.0.1 --port 20128
+Restart=on-failure
+RestartSec=10
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target
