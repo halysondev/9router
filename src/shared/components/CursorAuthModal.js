@@ -11,6 +11,7 @@ import { Modal, Button, Input } from "@/shared/components";
 export default function CursorAuthModal({ isOpen, onSuccess, onClose }) {
   const [accessToken, setAccessToken] = useState("");
   const [machineId, setMachineId] = useState("");
+  const [cachedEmail, setCachedEmail] = useState("");
   const [error, setError] = useState(null);
   const [importing, setImporting] = useState(false);
   const [autoDetecting, setAutoDetecting] = useState(false);
@@ -30,6 +31,7 @@ export default function CursorAuthModal({ isOpen, onSuccess, onClose }) {
       if (data.found) {
         setAccessToken(data.accessToken);
         setMachineId(data.machineId);
+        setCachedEmail(data.cachedEmail || "");
         setAutoDetected(true);
       } else if (data.windowsManual) {
         setWindowsManual(true);
@@ -70,6 +72,7 @@ export default function CursorAuthModal({ isOpen, onSuccess, onClose }) {
         body: JSON.stringify({
           accessToken: accessToken.trim(),
           machineId: machineId.trim(),
+          cachedEmail: cachedEmail.trim() || undefined,
         }),
       });
 

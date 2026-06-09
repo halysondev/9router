@@ -266,6 +266,7 @@ export function getProvidersByKind(kind) {
 export const USAGE_SUPPORTED_PROVIDERS = [
   "claude",
   "antigravity",
+  "cursor",
   "kiro",
   "qoder",
   "github",
