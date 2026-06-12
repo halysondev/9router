@@ -279,6 +279,8 @@ export const USAGE_SUPPORTED_PROVIDERS = [
   "minimax",
   "minimax-cn",
   "xai",
+  "opencode",
+  "opencode-go",
 ];
 
 // Subset that uses apikey auth (still surfaced on quota page)
@@ -287,4 +289,6 @@ export const USAGE_APIKEY_PROVIDERS = [
   "glm-cn",
   "minimax",
   "minimax-cn",
+  "opencode",
+  "opencode-go",
 ];
