@@ -36,6 +36,17 @@ export class OpenCodeGoExecutor extends BaseExecutor {
   }
 
   transformRequest(model, body) {
-    return injectReasoningContent({ provider: this.provider, model, body });
+    let out = injectReasoningContent({ provider: this.provider, model, body });
+
+    const baseModel = (out.model || model || '').toLowerCase();
+    const deepseekV4Pro = 'deepseek-v4-pro';
+    const effortLevels = ['low', 'medium', 'high', 'max'];
+    const matchedLevel = effortLevels.find((level) => String(model || '').endsWith(`-${level}`));
+
+    if (baseModel === deepseekV4Pro && matchedLevel && out.reasoning_effort === undefined) {
+      out = { ...out, reasoning_effort: matchedLevel };
+    }
+
+    return out;
   }
 }

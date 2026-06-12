@@ -22,10 +22,6 @@ const DEEPSEEK_V4_PRO_ALIASES = {
   [`${DEEPSEEK_V4_PRO}-max`]: {
     thinkingType: "enabled",
     reasoningEffort: "max"
-  },
-  [`${DEEPSEEK_V4_PRO}-none`]: {
-    thinkingType: "disabled",
-    reasoningEffort: null
   }
 };
 
