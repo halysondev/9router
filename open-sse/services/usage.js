@@ -105,10 +105,8 @@ export async function getUsageForProvider(connection, proxyOptions = null) {
     case "minimax":
     case "minimax-cn":
       return await getMiniMaxUsage(apiKey, provider, proxyOptions);
-    case "cursor":
-      return await getCursorUsage(accessToken, providerSpecificData, proxyOptions);
-    case "vercel-ai-gateway":
-      return await getVercelAiGatewayUsage(apiKey, proxyOptions);
+    case "xai":
+      return await getLocalUsageAggregate(connection, "xAI / Grok Build");
     case "cursor":
       return await getCursorUsage(accessToken, providerSpecificData, proxyOptions);
     case "vercel-ai-gateway":
@@ -116,6 +114,86 @@ export async function getUsageForProvider(connection, proxyOptions = null) {
     default:
       return { message: `Usage API not implemented for ${provider}` };
   }
+}
+
+async function getLocalUsageAggregate(connection, label) {
+  const [{ DatabaseSync }, pathModule, osModule] = await Promise.all([
+    import("node:sqlite"),
+    import("node:path"),
+    import("node:os"),
+  ]);
+  const path = pathModule.default || pathModule;
+  const os = osModule.default || osModule;
+  const dataDir = process.env.DATA_DIR?.trim() || path.join(os.homedir(), ".9router");
+  const dbPath = path.join(dataDir, "db", "data.sqlite");
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const db = new DatabaseSync(dbPath, { open: true, readOnly: true });
+  const rows = db.prepare(
+    `SELECT model, connectionId, promptTokens, completionTokens, cost, tokens
+       FROM usageHistory
+      WHERE provider = ? AND timestamp >= ?`
+  ).all(connection.provider, since);
+  db.close();
+
+  const filtered = rows.filter((row) => !connection.id || row.connectionId === connection.id);
+
+  if (!filtered.length) {
+    return {
+      plan: label,
+      message: `${label} connected. No requests recorded in the last 30 days.`,
+      quotas: {},
+      displayMessage: `${label} connected. No usage yet.`,
+    };
+  }
+
+  const totals = filtered.reduce(
+    (acc, row) => {
+      const tokens = typeof row.tokens === "string" && row.tokens ? JSON.parse(row.tokens) : (row.tokens || {});
+      const prompt = Number(row.promptTokens || tokens?.prompt_tokens || tokens?.promptTokens || 0);
+      const completion = Number(row.completionTokens || tokens?.completion_tokens || tokens?.completionTokens || 0);
+      acc.prompt += prompt;
+      acc.completion += completion;
+      acc.cost += Number(row.cost) || 0;
+      return acc;
+    },
+    { prompt: 0, completion: 0, cost: 0 },
+  );
+
+  const byModel = {};
+  for (const row of filtered) {
+    const tokens = typeof row.tokens === "string" && row.tokens ? JSON.parse(row.tokens) : (row.tokens || {});
+    const used = Number(row.promptTokens || tokens?.prompt_tokens || tokens?.promptTokens || 0)
+      + Number(row.completionTokens || tokens?.completion_tokens || tokens?.completionTokens || 0);
+    byModel[row.model] = (byModel[row.model] || 0) + used;
+  }
+
+  const unlimited = { remaining: 100, resetAt: null, unlimited: true };
+  const quotas = {
+    "Total spend (30d)": {
+      used: Number(totals.cost.toFixed(4)),
+      total: 0,
+      unit: "usd",
+      ...unlimited,
+    },
+    "Total tokens (30d)": {
+      used: totals.prompt + totals.completion,
+      total: 0,
+      ...unlimited,
+    },
+  };
+
+  for (const [model, used] of Object.entries(byModel)) {
+    quotas[`${model} (30d)`] = {
+      used,
+      total: 0,
+      ...unlimited,
+    };
+  }
+
+  return {
+    plan: label,
+    quotas,
+  };
 }
 
 /**
