@@ -8,6 +8,7 @@ const originalDataDir = process.env.DATA_DIR;
 async function setupTestContext(nodeData) {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "9router-compatible-provider-"));
   process.env.DATA_DIR = tempDir;
+  delete global._dbAdapter;
   vi.resetModules();
   vi.doMock("next/server", () => ({
     NextResponse: {
@@ -33,12 +34,14 @@ async function setupTestContext(nodeData) {
     POST,
     getProviderConnections,
     cleanup() {
-      fs.rmSync(tempDir, { recursive: true, force: true });
+      try { global._dbAdapter?.instance?.close?.(); } catch {}
+      delete global._dbAdapter;
+      fs.rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
     },
   };
 }
 
-function makeRequest(provider) {
+function makeRequest(provider, overrides = {}) {
   return new Request("https://9router.local/api/providers", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -47,6 +50,7 @@ function makeRequest(provider) {
       apiKey: "test-key",
       name: "Test Connection",
       defaultModel: "test-model",
+      ...overrides,
     }),
   });
 }
@@ -145,26 +149,73 @@ describe("compatible provider connections API", () => {
     });
   });
 
-  it("returns 400 for a duplicate connection on the same compatible node", async () => {
+  it("creates multiple API-key connections for the same OpenAI-compatible node", async () => {
     const ctx = await setupTestContext({
-      id: "openai-compatible-duplicate-test",
+      id: "openai-compatible-multi-test",
       type: "openai-compatible",
-      name: "Duplicate Guard Node",
-      prefix: "dup",
+      name: "Multi OpenAI Compatible Node",
+      prefix: "multi",
       apiType: "chat",
-      baseUrl: "https://duplicate-guard.test/v1",
+      baseUrl: "https://multi-openai-compatible.test/v1",
     });
     cleanup = ctx.cleanup;
 
-    const firstResponse = await ctx.POST(makeRequest(ctx.node.id));
-    const secondResponse = await ctx.POST(makeRequest(ctx.node.id));
-    const secondBody = await secondResponse.json();
+    const firstResponse = await ctx.POST(makeRequest(ctx.node.id, { name: "Primary Key", apiKey: "test-key-1" }));
+    const secondResponse = await ctx.POST(makeRequest(ctx.node.id, { name: "Fallback Key", apiKey: "test-key-2" }));
     const storedConnections = await ctx.getProviderConnections({ provider: ctx.node.id });
 
     expect(firstResponse.status).toBe(201);
-    expect(secondResponse.status).toBe(400);
-    expect(secondBody.error).toContain("Only one connection is allowed");
-    expect(storedConnections).toHaveLength(1);
-    expectCompatibleConnection(storedConnections[0], ctx.node, { apiType: "chat" });
+    expect(secondResponse.status).toBe(201);
+    expect(storedConnections).toHaveLength(2);
+    expect(storedConnections.map((connection) => connection.name).sort()).toEqual(["Fallback Key", "Primary Key"]);
+    for (const connection of storedConnections) {
+      expectCompatibleConnection(connection, ctx.node, { apiType: "chat" });
+    }
+  });
+
+  it("creates multiple API-key connections for the same Anthropic-compatible node", async () => {
+    const ctx = await setupTestContext({
+      id: "anthropic-compatible-multi-test",
+      type: "anthropic-compatible",
+      name: "Multi Anthropic Compatible Node",
+      prefix: "anthmulti",
+      baseUrl: "https://multi-anthropic-compatible.test/v1",
+    });
+    cleanup = ctx.cleanup;
+
+    const firstResponse = await ctx.POST(makeRequest(ctx.node.id, { name: "Primary Anthropic Key", apiKey: "test-key-1" }));
+    const secondResponse = await ctx.POST(makeRequest(ctx.node.id, { name: "Fallback Anthropic Key", apiKey: "test-key-2" }));
+    const storedConnections = await ctx.getProviderConnections({ provider: ctx.node.id });
+
+    expect(firstResponse.status).toBe(201);
+    expect(secondResponse.status).toBe(201);
+    expect(storedConnections).toHaveLength(2);
+    expect(storedConnections.map((connection) => connection.name).sort()).toEqual(["Fallback Anthropic Key", "Primary Anthropic Key"]);
+    for (const connection of storedConnections) {
+      expectCompatibleConnection(connection, ctx.node);
+    }
+  });
+
+  it("creates multiple API-key connections for the same custom embedding node", async () => {
+    const ctx = await setupTestContext({
+      id: "custom-embedding-multi-test",
+      type: "custom-embedding",
+      name: "Multi Custom Embedding Node",
+      prefix: "embmulti",
+      baseUrl: "https://multi-custom-embedding.test/v1",
+    });
+    cleanup = ctx.cleanup;
+
+    const firstResponse = await ctx.POST(makeRequest(ctx.node.id, { name: "Primary Embedding Key", apiKey: "test-key-1" }));
+    const secondResponse = await ctx.POST(makeRequest(ctx.node.id, { name: "Fallback Embedding Key", apiKey: "test-key-2" }));
+    const storedConnections = await ctx.getProviderConnections({ provider: ctx.node.id });
+
+    expect(firstResponse.status).toBe(201);
+    expect(secondResponse.status).toBe(201);
+    expect(storedConnections).toHaveLength(2);
+    expect(storedConnections.map((connection) => connection.name).sort()).toEqual(["Fallback Embedding Key", "Primary Embedding Key"]);
+    for (const connection of storedConnections) {
+      expectCompatibleConnection(connection, ctx.node);
+    }
   });
 });
