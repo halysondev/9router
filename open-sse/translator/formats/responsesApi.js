@@ -23,6 +23,37 @@ export function normalizeResponsesInput(input) {
   return null;
 }
 
+export function isResponsesToolCallItemType(itemType) {
+  return itemType === RESPONSES_ITEM.FUNCTION_CALL || itemType === RESPONSES_ITEM.CUSTOM_TOOL_CALL;
+}
+
+export function isResponsesToolOutputItemType(itemType) {
+  return itemType === RESPONSES_ITEM.FUNCTION_CALL_OUTPUT || itemType === RESPONSES_ITEM.CUSTOM_TOOL_CALL_OUTPUT;
+}
+
+export function getResponsesToolCallName(item) {
+  if (typeof item?.name === "string" && item.name.trim()) return item.name.trim();
+  const customName = item?.custom && typeof item.custom === "object" ? item.custom.name : null;
+  if (typeof customName === "string" && customName.trim()) return customName.trim();
+  return "";
+}
+
+export function getResponsesToolCallArguments(item) {
+  if (item?.arguments !== undefined && item.arguments !== null) {
+    return typeof item.arguments === "string" ? item.arguments : JSON.stringify(item.arguments);
+  }
+  if (item?.input !== undefined && item.input !== null) {
+    return typeof item.input === "string" ? item.input : JSON.stringify(item.input);
+  }
+  return "{}";
+}
+
+export function getResponsesToolCallOutput(item) {
+  if (item?.output === undefined || item.output === null) return "";
+  const output = typeof item.output === "string" ? item.output : JSON.stringify(item.output);
+  return typeof output === "string" ? output : "";
+}
+
 /**
  * Convert OpenAI Responses API format to standard chat completions format
  * Responses API uses: { input: [...], instructions: "..." }
@@ -80,7 +111,7 @@ export function convertResponsesApiFormat(body) {
         : item.content;
       result.messages.push({ role: item.role, content });
     }
-    else if (itemType === RESPONSES_ITEM.FUNCTION_CALL) {
+    else if (isResponsesToolCallItemType(itemType)) {
       // Start or append to assistant message with tool_calls
       if (!currentAssistantMsg) {
         currentAssistantMsg = {
@@ -90,17 +121,18 @@ export function convertResponsesApiFormat(body) {
         };
       }
       // Skip items with empty/missing name — upstream APIs reject nameless tool calls (#444)
-      if (!item.name || typeof item.name !== "string" || item.name.trim() === "") continue;
+      const name = getResponsesToolCallName(item);
+      if (!name) continue;
       currentAssistantMsg.tool_calls.push({
         id: item.call_id,
         type: OPENAI_BLOCK.FUNCTION,
         function: {
-          name: item.name,
-          arguments: item.arguments
+          name,
+          arguments: getResponsesToolCallArguments(item)
         }
       });
     }
-    else if (itemType === RESPONSES_ITEM.FUNCTION_CALL_OUTPUT) {
+    else if (isResponsesToolOutputItemType(itemType)) {
       // Flush assistant message first if exists
       if (currentAssistantMsg) {
         result.messages.push(currentAssistantMsg);
@@ -110,7 +142,7 @@ export function convertResponsesApiFormat(body) {
       pendingToolResults.push({
         role: ROLE.TOOL,
         tool_call_id: item.call_id,
-        content: typeof item.output === "string" ? item.output : JSON.stringify(item.output)
+        content: getResponsesToolCallOutput(item)
       });
     }
     else if (itemType === RESPONSES_ITEM.REASONING) {

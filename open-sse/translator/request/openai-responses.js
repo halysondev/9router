@@ -6,7 +6,14 @@
  */
 import { register } from "../index.js";
 import { FORMATS } from "../formats.js";
-import { normalizeResponsesInput } from "../formats/responsesApi.js";
+import {
+  getResponsesToolCallArguments,
+  getResponsesToolCallName,
+  getResponsesToolCallOutput,
+  isResponsesToolCallItemType,
+  isResponsesToolOutputItemType,
+  normalizeResponsesInput,
+} from "../formats/responsesApi.js";
 import { ROLE, OPENAI_BLOCK, RESPONSES_ITEM } from "../schema/index.js";
 
 // Responses API enforces max 64 chars on call_id (#393)
@@ -87,7 +94,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       pendingReasoning = "";
       result.messages.push(msg);
     }
-    else if (itemType === RESPONSES_ITEM.FUNCTION_CALL) {
+    else if (isResponsesToolCallItemType(itemType)) {
       // Start or append to assistant message with tool_calls
       if (!currentAssistantMsg) {
         currentAssistantMsg = {
@@ -101,17 +108,18 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
         }
       }
       // Skip items with empty/missing name — Codex/OpenAI reject nameless tool calls (#444)
-      if (!item.name || typeof item.name !== "string" || item.name.trim() === "") continue;
+      const name = getResponsesToolCallName(item);
+      if (!name) continue;
       currentAssistantMsg.tool_calls.push({
         id: item.call_id,
         type: OPENAI_BLOCK.FUNCTION,
         function: {
-          name: item.name,
-          arguments: item.arguments
+          name,
+          arguments: getResponsesToolCallArguments(item)
         }
       });
     }
-    else if (itemType === RESPONSES_ITEM.FUNCTION_CALL_OUTPUT) {
+    else if (isResponsesToolOutputItemType(itemType)) {
       // Flush assistant message first if exists
       if (currentAssistantMsg) {
         result.messages.push(currentAssistantMsg);
@@ -128,7 +136,7 @@ export function openaiResponsesToOpenAIRequest(model, body, stream, credentials)
       result.messages.push({
         role: ROLE.TOOL,
         tool_call_id: item.call_id,
-        content: typeof item.output === "string" ? item.output : JSON.stringify(item.output)
+        content: getResponsesToolCallOutput(item)
       });
     }
     else if (itemType === RESPONSES_ITEM.REASONING) {

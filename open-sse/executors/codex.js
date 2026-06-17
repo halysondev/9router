@@ -29,6 +29,29 @@ const SHELL_EDIT_WARNING = "Do not use this tool to edit files when ApplyPatch i
 const SHELL_TOOL_NAMES = new Set([
   "shell", "bash", "run_terminal_cmd", "run_terminal_command", "run_terminal_command_v2", "execute_command"
 ]);
+const CURSOR_IDE_SWITCH_MODE_TOOL = {
+  type: "function",
+  name: "SwitchMode",
+  description: "Switch the Cursor agent between available working modes. Use target_mode_id such as agent, ask, plan, or debug.",
+  parameters: {
+    type: "object",
+    properties: {
+      target_mode_id: {
+        type: "string",
+        description: "Target mode id, for example agent, ask, plan, or debug."
+      },
+      explanation: {
+        type: "string",
+        description: "Short reason for requesting the mode switch."
+      },
+      tool_call_id: {
+        type: "string",
+        description: "Optional Cursor tool call id."
+      }
+    },
+    required: ["target_mode_id"]
+  }
+};
 
 // Allowlist of fields accepted by Codex Responses API — anything else is stripped
 const RESPONSES_API_ALLOWLIST = new Set([
@@ -85,6 +108,26 @@ function prioritizeApplyPatchCustomTool(tools) {
     else rest.push(tool);
   }
   return [...priority, ...rest];
+}
+
+function shouldAddCursorSwitchModeTool(names) {
+  if (names.has("switchmode") || names.has("switch_mode")) return false;
+  if (!names.has("askquestion")) return false;
+  return (
+    names.has("callmcptool") ||
+    names.has("fetchmcpresource") ||
+    names.has("subagent") ||
+    names.has("applypatch")
+  );
+}
+
+function addCursorSwitchModeTool(body, { validNames, functionNames }) {
+  const names = new Set(body.tools.map((tool) => toolNameOf(tool).toLowerCase()).filter(Boolean));
+  if (!shouldAddCursorSwitchModeTool(names)) return;
+
+  body.tools.push(structuredClone(CURSOR_IDE_SWITCH_MODE_TOOL));
+  validNames.add(CURSOR_IDE_SWITCH_MODE_TOOL.name);
+  functionNames.add(CURSOR_IDE_SWITCH_MODE_TOOL.name);
 }
 
 function normalizeCodexToolChoice(body, { validNames, functionNames, customNames }) {
@@ -166,6 +209,8 @@ function normalizeCodexTools(body) {
     functionNames.add(normalizedName);
     return true;
   });
+
+  addCursorSwitchModeTool(body, { validNames, functionNames });
 
   const hasApplyPatch = body.tools.some((tool) => tool.type === "custom" && isApplyPatchTool(tool));
   if (hasApplyPatch) {
