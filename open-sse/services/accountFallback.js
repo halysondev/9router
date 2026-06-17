@@ -25,6 +25,13 @@ export function checkFallbackError(status, errorText, backoffLevel = 0) {
     ? (typeof errorText === "string" ? errorText : JSON.stringify(errorText)).toLowerCase()
     : "";
 
+  // 404 is almost always a model/endpoint mismatch, not an account health signal.
+  // Returning it directly avoids locking every account for a model that upstream
+  // says does not exist or has not rolled out yet.
+  if (status === 404) {
+    return { shouldFallback: false, cooldownMs: 0 };
+  }
+
   for (const rule of ERROR_RULES) {
     // Text-based rule: match substring in error message
     if (rule.text && lowerError && lowerError.includes(rule.text)) {
