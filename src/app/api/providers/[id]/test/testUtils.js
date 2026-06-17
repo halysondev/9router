@@ -437,6 +437,15 @@ async function testApiKeyConnection(connection, effectiveProxy = null) {
         const valid = res.status !== 401 && res.status !== 403;
         return { valid, error: valid ? null : "Invalid API key" };
       }
+      case "zai-coding": {
+        const res = await fetchWithConnectionProxy(PROVIDERS["zai-coding"].baseUrl, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${connection.apiKey}`, "content-type": "application/json" },
+          body: JSON.stringify({ model: getDefaultModel("zai-coding"), max_tokens: 1, messages: [{ role: "user", content: "test" }] }),
+        }, effectiveProxy);
+        const valid = res.status !== 401 && res.status !== 403;
+        return { valid, error: valid ? null : "Invalid API key" };
+      }
       case "minimax":
       case "minimax-cn": {
         const endpoints = { minimax: "https://api.minimax.io/anthropic/v1/messages", "minimax-cn": "https://api.minimaxi.com/anthropic/v1/messages" };

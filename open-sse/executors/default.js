@@ -88,6 +88,16 @@ export class DefaultExecutor extends BaseExecutor {
       if (this.config.quirks?.dropClientMetadata) {
         delete transformed.client_metadata;
       }
+      if (
+        this.config.format === "openai" &&
+        this.config.quirks?.autoToolStream &&
+        transformed.stream === true &&
+        Array.isArray(transformed.tools) &&
+        transformed.tools.length > 0 &&
+        transformed.tool_stream === undefined
+      ) {
+        transformed.tool_stream = true;
+      }
     }
 
     return injectReasoningContent({ provider: this.provider, model, body: transformed });

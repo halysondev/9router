@@ -103,8 +103,17 @@ const PROVIDER_MODELS = {
     { id: "auto" },
   ],
   glm: [
+    { id: "glm-5.2" },
+    { id: "glm-5.1" },
+    { id: "glm-5" },
     { id: "glm-4.7" },
     { id: "glm-4.6v" },
+  ],
+  "zai-coding": [
+    { id: "glm-5.2" },
+    { id: "glm-5.1" },
+    { id: "glm-5" },
+    { id: "glm-4.7" },
   ],
   kimi: [
     { id: "kimi-latest" },
@@ -129,6 +138,7 @@ const OAUTH_PROVIDERS = {
 const APIKEY_PROVIDERS = {
   openrouter: { id: "openrouter", name: "OpenRouter" },
   glm: { id: "glm", name: "GLM Coding" },
+  "zai-coding": { id: "zai-coding", name: "Z.AI Coding Plan" },
   minimax: { id: "minimax", name: "Minimax Coding" },
   kimi: { id: "kimi", name: "Kimi Coding" },
   openai: { id: "openai", name: "OpenAI" },

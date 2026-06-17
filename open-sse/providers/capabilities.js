@@ -67,6 +67,7 @@ export const MODEL_CAPABILITIES = {
   "gpt-image-1":       { imageOutput: true, tools: false },
 
   // GLM vision variant (text GLM has no vision)
+  "glm-5.2":          { reasoning: true, thinkingFormat: "zai", contextWindow: 1000000, maxOutput: 131072 },
   "glm-4.6v":          { vision: true, reasoning: true, thinkingFormat: "zai", contextWindow: 128000 },
 
   // Qwen plain coder/text (no vision) — registry "vision-model" / "coder-model" aliases
@@ -149,6 +150,7 @@ export const PATTERN_CAPABILITIES = [
   { pattern: "*kimi*",          caps: { reasoning: true, thinkingFormat: "kimi", contextWindow: 262144 } },
 
   // ── GLM / Z.ai (thinking.enabled; disable via enable_thinking:false) ─
+  { pattern: "*glm-5.2*",       caps: { reasoning: true, thinkingFormat: "zai", contextWindow: 1000000, maxOutput: 131072 } },
   { pattern: "*glm-5*",         caps: { reasoning: true, thinkingFormat: "zai", contextWindow: 200000, maxOutput: 128000 } },
   { pattern: "*glm-4.7*",       caps: { reasoning: true, thinkingFormat: "zai", contextWindow: 200000, maxOutput: 128000 } },
   { pattern: "*glm-4*",         caps: { reasoning: true, thinkingFormat: "zai", contextWindow: 200000 } },

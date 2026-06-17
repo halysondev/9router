@@ -218,6 +218,8 @@ const PROVIDER_MODELS_CONFIG = {
     authPrefix: "Bearer ",
     parseResponse: (data) => data.data || []
   },
+  "glm-cn": createOpenAIModelsConfig("https://open.bigmodel.cn/api/coding/paas/v4/models"),
+  "zai-coding": createOpenAIModelsConfig("https://api.z.ai/api/coding/paas/v4/models"),
   "volcengine-ark": createOpenAIModelsConfig("https://ark.cn-beijing.volces.com/api/coding/v3/models"),
   byteplus: createOpenAIModelsConfig("https://ark.ap-southeast.bytepluses.com/api/coding/v3/models"),
 

@@ -25,6 +25,7 @@
     "openrouter": "openrouter",
     "glm": "glm",
     "kimi": "kimi",
+    "zai-coding": "zai-coding",
     "minimax": "minimax",
     "minimax-cn": "minimax-cn",
     "hf": "huggingface",
@@ -153,7 +154,8 @@
     "volcengine-ark": "volcengine-ark",
     "xai": "xai",
     "xiaomi-mimo": "xiaomi-mimo",
-    "xiaomi-tokenplan": "xiaomi-tokenplan"
+    "xiaomi-tokenplan": "xiaomi-tokenplan",
+    "zai-coding": "zai-coding"
   },
   "modelKeys": [
     "ag",
@@ -229,6 +231,7 @@
     "voyage-ai",
     "xai",
     "xiaomi-mimo",
-    "xiaomi-tokenplan"
+    "xiaomi-tokenplan",
+    "zai-coding"
   ]
 }

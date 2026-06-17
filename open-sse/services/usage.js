@@ -38,6 +38,7 @@ const USAGE_HANDLERS = {
   ollama: (c) => getOllamaUsage(c.accessToken),
   glm: (c) => getGlmUsage(c.apiKey, c.provider, c.proxyOptions),
   "glm-cn": (c) => getGlmUsage(c.apiKey, c.provider, c.proxyOptions),
+  "zai-coding": (c) => getGlmUsage(c.apiKey, c.provider, c.proxyOptions),
   minimax: (c) => getMiniMaxUsage(c.apiKey, c.provider, c.proxyOptions),
   "minimax-cn": (c) => getMiniMaxUsage(c.apiKey, c.provider, c.proxyOptions),
   "vercel-ai-gateway": (c) => getVercelAiGatewayUsage(c.apiKey, c.proxyOptions),
