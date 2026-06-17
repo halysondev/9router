@@ -1,4 +1,8 @@
+import { initConsoleLogCapture } from "@/lib/consoleLogBuffer.js";
+
 // Logger utility for cloud
+
+initConsoleLogCapture();
 
 const LOG_LEVELS = {
   DEBUG: 0,

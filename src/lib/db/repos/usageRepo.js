@@ -695,12 +695,51 @@ function formatLogDate(date = new Date()) {
   return `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-// No-op: request log is now derived from usageHistory table on read.
-export async function appendRequestLog() {}
+// Persist failed request log rows without updating aggregate usage counters.
+// Successful requests are stored by saveRequestUsage(), so writing them here
+// would double-count token usage and totals.
+export async function appendRequestLog(entry = {}) {
+  const status = typeof entry.status === "string" ? entry.status.trim() : "";
+  if (!status || status === "PENDING" || status === "200 OK" || status.toLowerCase() === "ok") return;
+
+  try {
+    const db = await getAdapter();
+    const timestamp = entry.timestamp || new Date().toISOString();
+    const tokens = entry.tokens && typeof entry.tokens === "object" ? entry.tokens : {};
+    const promptTokens = tokens.prompt_tokens || tokens.input_tokens || 0;
+    const completionTokens = tokens.completion_tokens || tokens.output_tokens || 0;
+    const logEntry = {
+      timestamp,
+      provider: entry.provider || null,
+      model: entry.model || null,
+      connectionId: entry.connectionId || null,
+      apiKey: entry.apiKey || null,
+      endpoint: entry.endpoint || null,
+      cost: 0,
+      status,
+      tokens,
+    };
+
+    db.run(
+      `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        logEntry.timestamp, logEntry.provider, logEntry.model,
+        logEntry.connectionId, logEntry.apiKey, logEntry.endpoint,
+        promptTokens, completionTokens, 0, status,
+        stringifyJson(tokens), stringifyJson({ logOnly: true }),
+      ],
+    );
+
+    pushToRing(logEntry);
+    statsEmitter.emit("update");
+  } catch (e) {
+    console.error("[usageRepo] appendRequestLog failed:", e.message);
+  }
+}
 
 export async function getRecentLogs(limit = 200) {
   try {
-    const db = getAdapter();
+    const db = await getAdapter();
     const rows = db.all(
       `SELECT timestamp, provider, model, connectionId, promptTokens, completionTokens, status, tokens FROM usageHistory ORDER BY id DESC LIMIT ?`,
       [limit],

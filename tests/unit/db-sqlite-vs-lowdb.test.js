@@ -203,6 +203,37 @@ describe("DB SQLite layer — public API parity", () => {
     expect(stats.byProvider.openai.promptTokens).toBeGreaterThanOrEqual(300);
   });
 
+  it("usage logs: appendRequestLog persists failures without duplicating success usage", async () => {
+    const provider = "log-test-provider";
+    const before = await sqliteDb.getUsageHistory({ provider });
+
+    await sqliteDb.appendRequestLog({
+      provider,
+      model: "log-test-model",
+      connectionId: "log-test-connection",
+      status: "FAILED 404",
+    });
+    await sqliteDb.appendRequestLog({
+      provider,
+      model: "log-test-model",
+      connectionId: "log-test-connection",
+      status: "200 OK",
+      tokens: { prompt_tokens: 10, completion_tokens: 5 },
+    });
+
+    const after = await sqliteDb.getUsageHistory({ provider });
+    const logs = await sqliteDb.getRecentLogs(20);
+
+    expect(after).toHaveLength(before.length + 1);
+    expect(after.at(-1)).toMatchObject({
+      provider,
+      model: "log-test-model",
+      connectionId: "log-test-connection",
+      status: "FAILED 404",
+    });
+    expect(logs.some((line) => line.includes("log-test-model") && line.includes("FAILED 404"))).toBe(true);
+  });
+
   it("usage: pending tracking in-memory", () => {
     sqliteDb.trackPendingRequest("gpt-4", "openai", "c1", true);
     expect(global._pendingRequests.byModel["gpt-4 (openai)"]).toBe(1);
