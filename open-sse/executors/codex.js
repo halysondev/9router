@@ -25,10 +25,15 @@ const CODEX_HOSTED_TOOL_TYPES = new Set([
   "computer", "computer_use_preview", "code_interpreter", "mcp", "local_shell"
 ]);
 
+const SHELL_EDIT_WARNING = "Do not use this tool to edit files when ApplyPatch is available; use ApplyPatch for file edits.";
+const SHELL_TOOL_NAMES = new Set([
+  "shell", "bash", "run_terminal_cmd", "run_terminal_command", "run_terminal_command_v2", "execute_command"
+]);
+
 // Allowlist of fields accepted by Codex Responses API — anything else is stripped
 const RESPONSES_API_ALLOWLIST = new Set([
   "model", "input", "instructions", "tools", "tool_choice", "stream", "store",
-  "reasoning", "service_tier", "include", "prompt_cache_key", "client_metadata"
+  "parallel_tool_calls", "reasoning", "service_tier", "include", "prompt_cache_key", "client_metadata"
 ]);
 
 // Convert role=system → role=developer in body.input (keeps content in cacheable prefix)
@@ -54,10 +59,62 @@ function stripStoredItemReferences(body) {
   });
 }
 
+function toolNameOf(tool) {
+  return typeof tool?.name === "string" ? tool.name.trim() : "";
+}
+
+function isApplyPatchTool(tool) {
+  return /^apply_?patch$/i.test(toolNameOf(tool));
+}
+
+function isShellTool(tool) {
+  return tool?.type === "function" && SHELL_TOOL_NAMES.has(toolNameOf(tool).toLowerCase());
+}
+
+function appendShellEditWarning(tool) {
+  const description = typeof tool.description === "string" ? tool.description : "";
+  if (description.toLowerCase().includes(SHELL_EDIT_WARNING.toLowerCase())) return;
+  tool.description = description ? `${description}\n\n${SHELL_EDIT_WARNING}` : SHELL_EDIT_WARNING;
+}
+
+function prioritizeApplyPatchCustomTool(tools) {
+  const priority = [];
+  const rest = [];
+  for (const tool of tools) {
+    if (tool?.type === "custom" && isApplyPatchTool(tool)) priority.push(tool);
+    else rest.push(tool);
+  }
+  return [...priority, ...rest];
+}
+
+function normalizeCodexToolChoice(body, { validNames, functionNames, customNames }) {
+  if (!body.tool_choice || typeof body.tool_choice !== "object" || Array.isArray(body.tool_choice)) return;
+
+  const choice = body.tool_choice;
+  if (choice.type !== "function" && choice.type !== "custom") return;
+
+  const rawName = typeof choice.name === "string"
+    ? choice.name
+    : (typeof choice.function?.name === "string" ? choice.function.name : "");
+  const name = rawName.trim().slice(0, 128);
+
+  if (!name || !validNames.has(name)) {
+    delete body.tool_choice;
+    return;
+  }
+
+  const type = choice.type === "custom" || (customNames.has(name) && !functionNames.has(name))
+    ? "custom"
+    : "function";
+  body.tool_choice = { type, name };
+}
+
 // Flatten Chat-Completions tool shape into Responses flat format + filter unsupported tools
 function normalizeCodexTools(body) {
   if (!Array.isArray(body.tools)) return;
   const validNames = new Set();
+  const functionNames = new Set();
+  const customNames = new Set();
   body.tools = body.tools.filter((tool) => {
     if (!tool || typeof tool !== "object" || Array.isArray(tool)) return false;
     const type = typeof tool.type === "string" ? tool.type : "";
@@ -68,6 +125,23 @@ function normalizeCodexTools(body) {
           if (n) validNames.add(n);
         }
       }
+      return true;
+    }
+    if (type === "custom") {
+      const name = toolNameOf(tool);
+      if (!name) return false;
+      const normalizedName = name.slice(0, 128);
+      const description = typeof tool.description === "string" ? tool.description : "";
+      const format = tool.format && typeof tool.format === "object" && !Array.isArray(tool.format)
+        ? tool.format
+        : null;
+      for (const k of Object.keys(tool)) delete tool[k];
+      tool.type = "custom";
+      tool.name = normalizedName;
+      if (description) tool.description = description;
+      if (format) tool.format = format;
+      validNames.add(normalizedName);
+      customNames.add(normalizedName);
       return true;
     }
     if (type !== "function") {
@@ -84,19 +158,24 @@ function normalizeCodexTools(body) {
       : (fn?.parameters && typeof fn.parameters === "object" && !Array.isArray(fn.parameters) ? fn.parameters : { type: "object", properties: {} });
     for (const k of Object.keys(tool)) delete tool[k];
     tool.type = "function";
-    tool.name = name.slice(0, 128);
+    const normalizedName = name.slice(0, 128);
+    tool.name = normalizedName;
     if (description) tool.description = description;
     tool.parameters = parameters;
-    validNames.add(name);
+    validNames.add(normalizedName);
+    functionNames.add(normalizedName);
     return true;
   });
-  // Drop tool_choice if it references an unknown function name
-  if (body.tool_choice && typeof body.tool_choice === "object" && !Array.isArray(body.tool_choice)) {
-    if (body.tool_choice.type === "function") {
-      const n = typeof body.tool_choice.name === "string" ? body.tool_choice.name.trim() : "";
-      if (!n || !validNames.has(n)) delete body.tool_choice;
+
+  const hasApplyPatch = body.tools.some((tool) => tool.type === "custom" && isApplyPatchTool(tool));
+  if (hasApplyPatch) {
+    body.tools = prioritizeApplyPatchCustomTool(body.tools);
+    for (const tool of body.tools) {
+      if (isShellTool(tool)) appendShellEditWarning(tool);
     }
   }
+
+  normalizeCodexToolChoice(body, { validNames, functionNames, customNames });
 }
 
 // Resolve prompt-cache session id: client session → assistant-text-hash → workspaceId → connection

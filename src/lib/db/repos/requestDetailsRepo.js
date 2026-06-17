@@ -98,6 +98,8 @@ async function flushToDatabase() {
             providerRequest: truncateField(item.providerRequest, config.maxJsonSize),
             providerResponse: truncateField(item.providerResponse, config.maxJsonSize),
             response: truncateField(item.response, config.maxJsonSize),
+            requestToolNames: Array.isArray(item.requestToolNames) ? item.requestToolNames : [],
+            providerToolNames: Array.isArray(item.providerToolNames) ? item.providerToolNames : [],
           };
 
           db.run(

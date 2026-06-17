@@ -34,6 +34,26 @@ function pickAssistantMessageForChatCompletion(output) {
   return { msgItem: last, textContent: textFromResponsesMessageItem(last) };
 }
 
+function isResponsesToolCallItem(item) {
+  return item?.type === "function_call" || item?.type === "custom_tool_call";
+}
+
+function responsesToolName(item) {
+  if (typeof item?.name === "string" && item.name.trim()) return item.name.trim();
+  const customName = item?.custom && typeof item.custom === "object" ? item.custom.name : null;
+  return typeof customName === "string" ? customName.trim() : "";
+}
+
+function responsesToolArguments(item) {
+  if (item?.arguments !== undefined && item.arguments !== null) {
+    return typeof item.arguments === "string" ? item.arguments : JSON.stringify(item.arguments);
+  }
+  if (item?.input !== undefined && item.input !== null) {
+    return typeof item.input === "string" ? item.input : JSON.stringify(item.input);
+  }
+  return "{}";
+}
+
 /**
  * Parse OpenAI-style SSE text into a single chat completion JSON.
  * Used when provider forces streaming but client wants non-streaming.
@@ -147,16 +167,19 @@ export async function handleForcedSSEToJson({ providerResponse, sourceFormat, pr
       const outTokens = usage.output_tokens || 0;
       let finalResp;
 
-      // Extract tool calls from Responses API output (function_call items)
-      const funcCallItems = (jsonResponse.output || []).filter(item => item.type === "function_call");
-      const toolCalls = funcCallItems.map((item, idx) => ({
-        id: item.call_id || `call_${item.name}_${Date.now()}_${idx}`,
-        type: "function",
-        function: {
-          name: item.name,
-          arguments: typeof item.arguments === "string" ? item.arguments : JSON.stringify(item.arguments || {})
-        }
-      }));
+      // Extract tool calls from Responses API output (function_call/custom_tool_call items)
+      const funcCallItems = (jsonResponse.output || []).filter(isResponsesToolCallItem);
+      const toolCalls = funcCallItems.map((item, idx) => {
+        const name = responsesToolName(item) || "unknown";
+        return {
+          id: item.call_id || item.id || `call_${name}_${Date.now()}_${idx}`,
+          type: "function",
+          function: {
+            name,
+            arguments: responsesToolArguments(item)
+          }
+        };
+      });
       const hasToolCalls = toolCalls.length > 0;
 
       if (sourceFormat === FORMATS.ANTIGRAVITY || sourceFormat === FORMATS.GEMINI || sourceFormat === FORMATS.GEMINI_CLI) {

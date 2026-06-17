@@ -202,12 +202,65 @@ function normalizeToolParameters(params) {
   return params;
 }
 
+function mapToolChoice(toolChoice, hasTools) {
+  if (!hasTools || toolChoice === undefined || toolChoice === null) return undefined;
+  if (typeof toolChoice === "string") return toolChoice;
+  if (typeof toolChoice !== "object" || Array.isArray(toolChoice)) return undefined;
+
+  if (toolChoice.type === OPENAI_BLOCK.FUNCTION) {
+    const name =
+      typeof toolChoice.name === "string"
+        ? toolChoice.name
+        : (typeof toolChoice.function?.name === "string" ? toolChoice.function.name : "");
+    if (name.trim()) return { type: OPENAI_BLOCK.FUNCTION, name: name.trim() };
+  }
+
+  return { ...toolChoice };
+}
+
+function normalizeFunctionTool(tool) {
+  if (!tool || typeof tool !== "object" || Array.isArray(tool)) return tool;
+  if (tool.type !== OPENAI_BLOCK.FUNCTION) return tool;
+
+  const fn = tool.function && typeof tool.function === "object" && !Array.isArray(tool.function)
+    ? tool.function
+    : null;
+  const name = typeof tool.name === "string" ? tool.name : (typeof fn?.name === "string" ? fn.name : "");
+  if (!name) return tool;
+
+  const description = typeof tool.description === "string"
+    ? tool.description
+    : String(fn?.description || "");
+  const parameters = tool.parameters && typeof tool.parameters === "object" && !Array.isArray(tool.parameters)
+    ? tool.parameters
+    : fn?.parameters;
+  const strict = tool.strict ?? fn?.strict;
+
+  const normalized = {
+    type: OPENAI_BLOCK.FUNCTION,
+    name,
+    description,
+    parameters: normalizeToolParameters(parameters),
+  };
+  if (strict !== undefined) normalized.strict = strict;
+  return normalized;
+}
+
 /**
  * Convert OpenAI Chat Completions to OpenAI Responses API format
  */
 export function openaiToOpenAIResponsesRequest(model, body, stream, credentials) {
   // Body already in Responses API format (e.g. Cursor CLI calling /chat/completions with input[])
-  if (body.input) return { ...body, model, stream: true };
+  if (body.input) {
+    const result = { ...body, model, stream: true };
+    const hasTools = Array.isArray(result.tools) && result.tools.length > 0;
+    if (hasTools) {
+      const mappedChoice = mapToolChoice(result.tool_choice, true);
+      result.tool_choice = mappedChoice ?? "auto";
+      result.parallel_tool_calls = false;
+    }
+    return result;
+  }
 
   const result = {
     model,
@@ -298,18 +351,12 @@ export function openaiToOpenAIResponsesRequest(model, body, stream, credentials)
 
   // Convert tools format
   if (body.tools && Array.isArray(body.tools)) {
-    result.tools = body.tools.map(tool => {
-      if (tool.type === OPENAI_BLOCK.FUNCTION) {
-        return {
-          type: OPENAI_BLOCK.FUNCTION,
-          name: tool.function.name,
-          description: String(tool.function.description || ""),
-          parameters: normalizeToolParameters(tool.function.parameters),
-          strict: tool.function.strict
-        };
-      }
-      return tool;
-    });
+    result.tools = body.tools.map(normalizeFunctionTool);
+
+    if (result.tools.length > 0) {
+      result.tool_choice = mapToolChoice(body.tool_choice, true) ?? "auto";
+      result.parallel_tool_calls = false;
+    }
   }
 
   // Pass through other relevant fields

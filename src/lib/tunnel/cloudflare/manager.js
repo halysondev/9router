@@ -87,18 +87,29 @@ export async function enableTunnel(localPort = 20128) {
     await updateSettings({ tunnelEnabled: true, tunnelUrl });
     console.log(`[Tunnel] registered shortId=${shortId} publicUrl=${publicUrl}`);
 
-    // Verify publicUrl first (worker route is reliable; direct *.trycloudflare.com DNS may lag)
-    await waitForHealth(publicUrl, token);
-    console.log("[Tunnel] public URL healthy");
+    let reachableNow = false;
+    // Verify publicUrl first, but do not fail enable on DNS/edge warmup lag.
+    try {
+      await waitForHealth(publicUrl, token);
+      reachableNow = true;
+      console.log("[Tunnel] public URL healthy");
+    } catch (he) {
+      const message = he?.message || String(he);
+      if (!message.startsWith("Health check timeout")) throw he;
+      console.warn("[Tunnel] public URL health timed out, continuing while it warms up");
+    }
     // Direct tunnel probe is best-effort: DNS for *.trycloudflare.com can be slow/blocked
-    if (!(await probeUrlAlive(tunnelUrl))) {
+    if (await probeUrlAlive(tunnelUrl)) {
+      reachableNow = true;
+      console.log("[Tunnel] direct URL healthy");
+    } else if (reachableNow) {
       console.warn("[Tunnel] direct URL not reachable yet, continuing via publicUrl");
     } else {
-      console.log("[Tunnel] direct URL healthy");
+      console.warn("[Tunnel] direct URL not reachable yet, continuing while tunnel warms up");
     }
 
-    console.log("[Tunnel] enable success");
-    return { success: true, tunnelUrl, shortId, publicUrl };
+    console.log(`[Tunnel] enable success (reachable=${reachableNow})`);
+    return { success: true, tunnelUrl, shortId, publicUrl, reachable: reachableNow };
   } catch (e) {
     // Suppress noise when spawn was deliberately killed (restart/disable superseded it)
     if (!/cloudflared killed|tunnel cancelled/.test(e.message)) {

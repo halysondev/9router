@@ -18,6 +18,8 @@ beforeAll(async () => {
 });
 
 afterAll(() => {
+  try { global._dbAdapter?.instance?.close?.(); } catch {}
+  global._dbAdapter = { instance: null, initPromise: null, logged: false };
   if (tempDir) fs.rmSync(tempDir, { recursive: true, force: true });
   if (originalDataDir === undefined) delete process.env.DATA_DIR;
   else process.env.DATA_DIR = originalDataDir;
@@ -216,6 +218,8 @@ describe("DB SQLite layer — public API parity", () => {
       id: "d1", provider: "openai", model: "gpt-4", connectionId: "c1",
       status: "ok", tokens: { prompt_tokens: 10 },
       request: { method: "POST" }, response: { status: 200 },
+      requestToolNames: ["Shell", "ApplyPatch"],
+      providerToolNames: ["ApplyPatch", "Shell"],
     });
 
     // Wait for buffer flush
@@ -224,6 +228,8 @@ describe("DB SQLite layer — public API parity", () => {
     const got = await sqliteDb.getRequestDetailById("d1");
     expect(got).toBeDefined();
     expect(got.id).toBe("d1");
+    expect(got.requestToolNames).toEqual(["Shell", "ApplyPatch"]);
+    expect(got.providerToolNames).toEqual(["ApplyPatch", "Shell"]);
 
     const list = await sqliteDb.getRequestDetails({ provider: "openai" });
     expect(list.details.length).toBeGreaterThanOrEqual(1);

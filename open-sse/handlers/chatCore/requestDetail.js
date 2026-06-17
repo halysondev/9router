@@ -17,7 +17,21 @@ export function extractRequestConfig(body, stream) {
   for (const param of OPTIONAL_PARAMS) {
     if (body[param] !== undefined) config[param] = body[param];
   }
+  const toolNames = summarizeToolNames(body);
+  if (toolNames.length > 0) config.tool_names = toolNames;
   return config;
+}
+
+function getToolName(tool) {
+  return tool?.name || tool?.function?.name || "";
+}
+
+function summarizeToolNames(body) {
+  if (!Array.isArray(body?.tools)) return [];
+  return body.tools
+    .map(getToolName)
+    .filter((name) => typeof name === "string" && name.trim())
+    .map((name) => name.trim());
 }
 
 export function extractUsageFromResponse(responseBody) {
@@ -65,6 +79,8 @@ export function buildRequestDetail(base, overrides = {}) {
     tokens: base.tokens || { prompt_tokens: 0, completion_tokens: 0 },
     request: base.request,
     providerRequest: base.providerRequest || null,
+    requestToolNames: summarizeToolNames(base.request),
+    providerToolNames: summarizeToolNames(base.providerRequest),
     providerResponse: base.providerResponse || null,
     response: base.response || {},
     status: base.status || "success",

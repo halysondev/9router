@@ -369,6 +369,51 @@ function computeFinishReason(state) {
     : OPENAI_FINISH.STOP;
 }
 
+function isResponsesToolCall(item) {
+  return item?.type === RESPONSES_ITEM.FUNCTION_CALL || item?.type === RESPONSES_ITEM.CUSTOM_TOOL_CALL;
+}
+
+function outputIndex(data, fallback = 0) {
+  for (const key of ["output_index", "item_index"]) {
+    const value = data?.[key];
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && /^\d+$/.test(value)) return parseInt(value, 10);
+  }
+  return fallback;
+}
+
+function toolName(item) {
+  if (typeof item?.name === "string" && item.name.trim()) return item.name.trim();
+  const customName = item?.custom && typeof item.custom === "object" ? item.custom.name : null;
+  if (typeof customName === "string" && customName.trim()) return customName.trim();
+  return "";
+}
+
+function toolArgs(item) {
+  if (item?.arguments !== undefined && item.arguments !== null) {
+    return typeof item.arguments === "string" ? item.arguments : JSON.stringify(item.arguments);
+  }
+  if (item?.input !== undefined && item.input !== null) {
+    return typeof item.input === "string" ? item.input : JSON.stringify(item.input);
+  }
+  return "";
+}
+
+function readArgumentsDelta(raw) {
+  if (typeof raw === "string") return raw;
+  if (typeof raw === "number" || typeof raw === "boolean") return String(raw);
+  if (raw && typeof raw === "object") {
+    const nested = raw.text ?? raw.input ?? raw.delta;
+    if (typeof nested === "string") return nested;
+  }
+  return "";
+}
+
+function pendingToolCalls(state) {
+  if (!state.pendingResponsesToolCalls) state.pendingResponsesToolCalls = new Map();
+  return state.pendingResponsesToolCalls;
+}
+
 /**
  * Translate OpenAI Responses API chunk to OpenAI Chat Completions format
  * This is for when Codex returns data and we need to send it to an OpenAI-compatible client
@@ -426,18 +471,29 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
   }
 
   // Function call started (standard function_call or custom_tool_call)
-  if (eventType === "response.output_item.added" && (data.item?.type === RESPONSES_ITEM.FUNCTION_CALL || data.item?.type === "custom_tool_call")) {
+  if (eventType === "response.output_item.added" && isResponsesToolCall(data.item)) {
     const item = data.item;
-    state.currentToolCallId = item.call_id || fallbackToolCallId();
+    const idx = outputIndex(data, state.toolCallIndex || 0);
+    const callId = item.call_id || item.id || fallbackToolCallId(idx);
+    const name = toolName(item);
+    state.currentToolCallId = callId;
+    pendingToolCalls(state).set(idx, {
+      callId,
+      openAiIndex: idx,
+      argsBuffer: "",
+      deferred: !name
+    });
+
+    if (!name) return null;
 
     return buildChunk(
       { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
       {
         tool_calls: [{
-          index: state.toolCallIndex,
-          id: state.currentToolCallId,
+          index: idx,
+          id: callId,
           type: OPENAI_BLOCK.FUNCTION,
-          function: { name: item.name || "", arguments: "" }
+          function: { name, arguments: "" }
         }]
       }
     );
@@ -445,18 +501,53 @@ export function openaiResponsesToOpenAIResponse(chunk, state) {
 
   // Function call arguments delta (standard or custom_tool_call variant)
   if (eventType === "response.function_call_arguments.delta" || eventType === "response.custom_tool_call_input.delta") {
-    const argsDelta = data.delta || "";
+    const argsDelta = readArgumentsDelta(data.delta);
     if (!argsDelta) return null;
+    const idx = outputIndex(data, state.toolCallIndex || 0);
+    const pending = pendingToolCalls(state).get(idx);
+    if (pending) {
+      pending.argsBuffer += argsDelta;
+      if (pending.deferred) return null;
+    }
 
     return buildChunk(
       { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
-      { tool_calls: [{ index: state.toolCallIndex, function: { arguments: argsDelta } }] }
+      { tool_calls: [{ index: pending?.openAiIndex ?? idx, function: { arguments: argsDelta } }] }
     );
   }
 
   // Function call done (standard or custom_tool_call variant)
-  if (eventType === "response.output_item.done" && (data.item?.type === RESPONSES_ITEM.FUNCTION_CALL || data.item?.type === "custom_tool_call")) {
-    state.toolCallIndex++;
+  if (eventType === "response.output_item.done" && isResponsesToolCall(data.item)) {
+    const item = data.item;
+    const idx = outputIndex(data, state.toolCallIndex || 0);
+    const pending = pendingToolCalls(state).get(idx);
+    state.toolCallIndex = Math.max(state.toolCallIndex || 0, idx + 1);
+    if (!pending) return null;
+
+    pendingToolCalls(state).delete(idx);
+    if (!pending.deferred) return null;
+
+    const name = toolName(item) || "unknown";
+    const args = toolArgs(item) || pending.argsBuffer || "{}";
+    return buildChunk(
+      { id: state.chatId, created: state.created, model: state.model || MODEL_FALLBACK },
+      {
+        tool_calls: [{
+          index: pending.openAiIndex,
+          id: pending.callId,
+          type: OPENAI_BLOCK.FUNCTION,
+          function: { name, arguments: args }
+        }]
+      }
+    );
+  }
+
+  if (eventType === "response.function_call_arguments.done") {
+    const idx = outputIndex(data, state.toolCallIndex || 0);
+    const pending = pendingToolCalls(state).get(idx);
+    if (pending && !pending.argsBuffer && typeof data.arguments === "string" && data.arguments) {
+      pending.argsBuffer = data.arguments;
+    }
     return null;
   }
 

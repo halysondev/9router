@@ -25,6 +25,27 @@ function quotePs(value) {
   return `'${String(value).replace(/'/g, "''")}'`;
 }
 
+function encodePowerShell(script) {
+  return Buffer.from(script, "utf16le").toString("base64");
+}
+
+function buildPowerShellCommand(script, { elevated = false } = {}) {
+  const encoded = encodePowerShell(script);
+  if (!elevated) {
+    return `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ${encoded}`;
+  }
+
+  const wrapper = `
+    $proc = Start-Process powershell -ArgumentList @(
+      '-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass',
+      '-WindowStyle','Hidden','-EncodedCommand','${encoded}'
+    ) -Verb RunAs -Wait -PassThru -WindowStyle Hidden;
+    if ($proc.ExitCode -ne 0) { throw "Elevated command exited with code $($proc.ExitCode)" }
+  `;
+
+  return `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ${encodePowerShell(wrapper)}`;
+}
+
 /**
  * Run PowerShell script — escalated via UAC popup if not already admin.
  * Returns Promise resolving on exit code 0, rejecting otherwise.
@@ -35,13 +56,11 @@ function quotePs(value) {
 function runElevatedPowerShell(script) {
   if (!IS_WIN) return Promise.reject(new Error("Windows-only"));
 
-  const encoded = Buffer.from(script, "utf16le").toString("base64");
-
   // If already admin, run directly — zero popup
   if (isAdmin()) {
     return new Promise((resolve, reject) => {
       exec(
-        `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand ${encoded}`,
+        buildPowerShellCommand(script),
         { windowsHide: true },
         (error, stdout, stderr) => {
           if (error) reject(new Error(stderr || error.message));
@@ -52,17 +71,9 @@ function runElevatedPowerShell(script) {
   }
 
   // Not admin — wrap with Start-Process -Verb RunAs (UAC popup)
-  const wrapper = `
-    $proc = Start-Process powershell -ArgumentList @(
-      '-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass',
-      '-WindowStyle','Hidden','-EncodedCommand','${encoded}'
-    ) -Verb RunAs -Wait -PassThru -WindowStyle Hidden;
-    if ($proc.ExitCode -ne 0) { throw "Elevated command exited with code $($proc.ExitCode)" }
-  `;
-
   return new Promise((resolve, reject) => {
     exec(
-      `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ${quotePs(wrapper)}`,
+      buildPowerShellCommand(script, { elevated: true }),
       { windowsHide: true },
       (error, stdout, stderr) => {
         if (error) {
@@ -78,4 +89,4 @@ function runElevatedPowerShell(script) {
   });
 }
 
-module.exports = { isAdmin, runElevatedPowerShell, quotePs };
+module.exports = { isAdmin, runElevatedPowerShell, quotePs, buildPowerShellCommand };
